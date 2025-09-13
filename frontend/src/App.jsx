@@ -1,718 +1,1045 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
+import React, { useState, useEffect, useRef, createContext, useContext } from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
+import { Mic, MicOff, Send, Activity, Target, Calendar, TrendingUp, AlertTriangle, CheckCircle, Users, Play, Pause } from 'lucide-react';
 
-const API_BASE = ' http://127.0.0.1:8000';
+// Context for global state management
+const AppContext = createContext();
 
-// Icons
-const TrophyIcon = () => (
-  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-    <path fillRule="evenodd" d="M10 2L3 7v11a1 1 0 001 1h12a1 1 0 001-1V7l-7-5zM9 9a1 1 0 012 0v4a1 1 0 11-2 0V9z" clipRule="evenodd" />
-  </svg>
-);
-
-const UserIcon = () => (
-  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-    <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-  </svg>
-);
-
-const ChartIcon = () => (
-  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-    <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z" />
-  </svg>
-);
-
-const BoltIcon = () => (
-  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-    <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
-  </svg>
-);
-
-const RefreshIcon = () => (
-  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-  </svg>
-);
-
-const SearchIcon = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-  </svg>
-);
-
-// Mock data for charts
-const performanceData = [
-  { name: 'Week 1', goals: 4, assists: 2, performance: 8.2 },
-  { name: 'Week 2', goals: 2, assists: 5, performance: 7.8 },
-  { name: 'Week 3', goals: 6, assists: 1, performance: 9.1 },
-  { name: 'Week 4', goals: 3, assists: 4, performance: 8.5 },
-  { name: 'Week 5', goals: 5, assists: 3, performance: 8.9 },
-];
-
-const teamChemistryData = [
-  { name: 'Defense', value: 85 },
-  { name: 'Midfield', value: 92 },
-  { name: 'Attack', value: 78 },
-];
-
-const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444'];
-
-const SportsAnalyticsDashboard = () => {
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [players, setPlayers] = useState([]);
-  const [teams, setTeams] = useState([]);
-  const [predictions, setPredictions] = useState([]);
+const AppProvider = ({ children }) => {
+  const [user, setUser] = useState({ id: 'demo_user_123', name: 'Demo Athlete' });
+  const [currentPage, setCurrentPage] = useState('dashboard');
+  const [performanceData, setPerformanceData] = useState(null);
+  const [trainingPlan, setTrainingPlan] = useState(null);
+  const [websocket, setWebsocket] = useState(null);
+  const [insights, setInsights] = useState([]);
+  const [predictions, setPredictions] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [wsStatus, setWsStatus] = useState('disconnected');
-  const [wsMessages, setWsMessages] = useState([]);
-  const [selectedPlayer, setSelectedPlayer] = useState(null);
-  const [predictionForm, setPredictionForm] = useState({
-    player_id: '',
-    goals: 0,
-    assists: 0,
-    pass_accuracy: 0,
-    minutes_played: 0
-  });
-  const [searchTerm, setSearchTerm] = useState('');
-  const wsRef = useRef(null);
 
   useEffect(() => {
-    fetchData();
-    connectWebSocket();
+    // Initialize WebSocket connection
+    const ws = new WebSocket(`ws://localhost:8000/ws/${user.id}`);
     
+    ws.onopen = () => {
+      console.log('WebSocket connected');
+      setWebsocket(ws);
+    };
+    
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      handleWebSocketMessage(data);
+    };
+    
+    ws.onclose = () => {
+      console.log('WebSocket disconnected');
+      setWebsocket(null);
+    };
+
     return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close();
       }
     };
-  }, []);
+  }, [user.id]);
 
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const [playersRes, teamsRes, predictionsRes] = await Promise.all([
-        fetch(`${API_BASE}/players`),
-        fetch(`${API_BASE}/teams`),
-        fetch(`${API_BASE}/predictions`, {
-          headers: { Authorization: 'Bearer mock-token' }
-        })
-      ]);
-
-      const playersData = await playersRes.json();
-      const teamsData = await teamsRes.json();
-      const predictionsData = await predictionsRes.json();
-
-      setPlayers(playersData);
-      setTeams(teamsData);
-      setPredictions(predictionsData);
-    } catch (error) {
-      console.error('Error fetching data:', error);
-    } finally {
-      setLoading(false);
+  const handleWebSocketMessage = (data) => {
+    switch (data.type) {
+      case 'training_update':
+        setPerformanceData(data.data.performance_metrics);
+        setInsights(data.data.insights);
+        break;
+      case 'voice_response':
+        // Handle voice response updates
+        break;
+      case 'coaching_tip':
+        setInsights(prev => [...prev, {
+          insight_type: 'coaching_tip',
+          title: 'Coaching Tip',
+          message: data.message,
+          priority: 'low'
+        }]);
+        break;
     }
   };
 
-  const connectWebSocket = () => {
+  const apiCall = async (endpoint, options = {}) => {
     try {
-      const ws = new WebSocket(`ws://localhost:8000/ws/user_${Date.now()}`);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        setWsStatus('connected');
-        console.log('WebSocket connected');
-      };
-
-      ws.onmessage = (event) => {
-        const message = JSON.parse(event.data);
-        setWsMessages(prev => [...prev.slice(-9), message]);
-        
-        if (message.type === 'prediction') {
-          setPredictions(prev => [message.data, ...prev]);
-        }
-      };
-
-      ws.onclose = () => {
-        setWsStatus('disconnected');
-        console.log('WebSocket disconnected');
-        // Reconnect after 3 seconds
-        setTimeout(connectWebSocket, 3000);
-      };
-
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        setWsStatus('error');
-      };
-    } catch (error) {
-      console.error('WebSocket connection failed:', error);
-      setWsStatus('error');
-    }
-  };
-
-  const handlePrediction = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    
-    try {
-      const response = await fetch(`${API_BASE}/predict`, {
-        method: 'POST',
+      const response = await fetch(`http://localhost:8000${endpoint}`, {
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer mock-token'
+          ...options.headers
         },
-        body: JSON.stringify(predictionForm)
+        ...options
       });
-
-      const prediction = await response.json();
-      setPredictions(prev => [prediction, ...prev]);
       
-      // Reset form
-      setPredictionForm({
-        player_id: '',
-        goals: 0,
-        assists: 0,
-        pass_accuracy: 0,
-        minutes_played: 0
-      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      return await response.json();
     } catch (error) {
-      console.error('Prediction failed:', error);
-    } finally {
-      setLoading(false);
+      console.error('API call failed:', error);
+      throw error;
     }
   };
 
-  const filteredPlayers = players.filter(player =>
-    player.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    player.team.toLowerCase().includes(searchTerm.toLowerCase())
+  return (
+    <AppContext.Provider value={{
+      user,
+      currentPage,
+      setCurrentPage,
+      performanceData,
+      setPerformanceData,
+      trainingPlan,
+      setTrainingPlan,
+      websocket,
+      insights,
+      setInsights,
+      predictions,
+      setPredictions,
+      loading,
+      setLoading,
+      apiCall
+    }}>
+      {children}
+    </AppContext.Provider>
   );
+};
 
-  const StatCard = ({ title, value, subtitle, icon: Icon, color = "blue" }) => (
-    <div className={`bg-white rounded-xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow`}>
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-gray-600">{title}</p>
-          <p className={`text-2xl font-bold text-${color}-600`}>{value}</p>
-          {subtitle && <p className="text-xs text-gray-500 mt-1">{subtitle}</p>}
-        </div>
-        <div className={`p-3 bg-${color}-100 rounded-lg`}>
-          <Icon className={`text-${color}-600`} />
+// Navigation Component
+const Navigation = () => {
+  const { currentPage, setCurrentPage } = useContext(AppContext);
+
+  const navItems = [
+    { id: 'dashboard', icon: Activity, label: 'Dashboard' },
+    { id: 'voice', icon: Mic, label: 'Voice Coach' },
+    { id: 'training', icon: Calendar, label: 'Training Plan' },
+    { id: 'performance', icon: TrendingUp, label: 'Performance' },
+    { id: 'predictions', icon: Target, label: 'Predictions' }
+  ];
+
+  return (
+    <nav className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 shadow-lg">
+      <div className="max-w-7xl mx-auto flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Elevate your GAME</h1>
+        <div className="flex space-x-1">
+          {navItems.map(({ id, icon: Icon, label }) => (
+            <button
+              key={id}
+              onClick={() => setCurrentPage(id)}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all duration-200 ${
+                currentPage === id
+                  ? 'bg-white bg-opacity-20 shadow-lg'
+                  : 'hover:bg-white hover:bg-opacity-10'
+              }`}
+            >
+              <Icon size={18} />
+              <span className="hidden md:inline">{label}</span>
+            </button>
+          ))}
         </div>
       </div>
-    </div>
+    </nav>
   );
+};
 
-  const DashboardContent = () => (
-    <div className="space-y-6">
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard
-          title="Total Players"
-          value={players.length}
-          subtitle="Active players"
-          icon={UserIcon}
-          color="blue"
-        />
-        <StatCard
-          title="Total Teams"
-          value={teams.length}
-          subtitle="Registered teams"
-          icon={TrophyIcon}
-          color="green"
-        />
-        <StatCard
-          title="Predictions Made"
-          value={predictions.length}
-          subtitle="AI predictions"
-          icon={BoltIcon}
-          color="purple"
-        />
-        <StatCard
-          title="WebSocket Status"
-          value={wsStatus}
-          subtitle="Real-time connection"
-          icon={ChartIcon}
-          color={wsStatus === 'connected' ? 'green' : 'red'}
-        />
+// Dashboard Component
+const Dashboard = () => {
+  const { user, performanceData, setPerformanceData, apiCall, setCurrentPage, insights } = useContext(AppContext);
+  const [weeklyData, setWeeklyData] = useState([]);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  const loadDashboardData = async () => {
+    try {
+      const [performance, analytics] = await Promise.all([
+        apiCall(`/performance?user_id=${user.id}`),
+        apiCall(`/analytics?user_id=${user.id}`)
+      ]);
+      
+      setPerformanceData(performance.current_metrics);
+      
+      // Transform analytics data for chart
+      if (analytics.weekly_trends) {
+        const chartData = analytics.weekly_trends.slice(-6).map(week => ({
+          week: week.week.split('-W')[1],
+          intensity: week.avg_intensity,
+          sessions: week.sessions,
+          duration: week.total_duration
+        }));
+        setWeeklyData(chartData);
+      }
+    } catch (error) {
+      console.error('Failed to load dashboard data:', error);
+    }
+  };
+
+  const submitQuickSession = async () => {
+    const quickSession = {
+      user_id: user.id,
+      sport_type: 'strength_training',
+      duration_minutes: 60,
+      intensity: 7,
+      exercises: [
+        {
+          exercise_name: 'Squat',
+          sets: 4,
+          reps: 8,
+          weight: 80
+        }
+      ],
+      biometrics: {
+        heart_rate: 150,
+        rpe: 7,
+        sleep_hours: 8.0
+      }
+    };
+
+    try {
+      await apiCall('/training', {
+        method: 'POST',
+        body: JSON.stringify(quickSession)
+      });
+      loadDashboardData();
+    } catch (error) {
+      console.error('Failed to submit session:', error);
+    }
+  };
+
+  return (
+    <div className="max-w-7xl mx-auto p-6 space-y-6">
+      {/* Welcome Section */}
+      <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl p-6 border border-blue-100">
+        <div className="flex items-center space-x-4">
+          <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white text-xl font-bold">
+            {user.name.split(' ').map(n => n[0]).join('')}
+          </div>
+          <div>
+            <h2 className="text-2xl font-bold text-gray-800">Welcome back, {user.name}!</h2>
+            <p className="text-gray-600">Ready to crush your fitness goals today?</p>
+          </div>
+        </div>
       </div>
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-          <h3 className="text-lg font-semibold mb-4">Performance Trends</h3>
+      {/* Performance Snapshot */}
+      {performanceData && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <MetricCard
+            title="Overall Score"
+            value={`${performanceData.overall_score}%`}
+            color="blue"
+            trend={performanceData.trend_direction}
+          />
+          <MetricCard
+            title="Strength"
+            value={`${performanceData.strength_score}%`}
+            color="red"
+          />
+          <MetricCard
+            title="Endurance"
+            value={`${performanceData.endurance_score}%`}
+            color="green"
+          />
+          <MetricCard
+            title="Recovery"
+            value={`${performanceData.recovery_score}%`}
+            color="purple"
+          />
+        </div>
+      )}
+
+      {/* Weekly Progress Chart */}
+      <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
+        <h3 className="text-xl font-bold text-gray-800 mb-4">Weekly Progress</h3>
+        {weeklyData.length > 0 ? (
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={performanceData}>
+            <LineChart data={weeklyData}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
+              <XAxis dataKey="week" />
               <YAxis />
               <Tooltip />
-              <Line type="monotone" dataKey="performance" stroke="#3B82F6" strokeWidth={2} />
-              <Line type="monotone" dataKey="goals" stroke="#10B981" strokeWidth={2} />
+              <Line type="monotone" dataKey="intensity" stroke="#3B82F6" strokeWidth={3} />
+              <Line type="monotone" dataKey="sessions" stroke="#10B981" strokeWidth={3} />
             </LineChart>
           </ResponsiveContainer>
-        </div>
-
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-          <h3 className="text-lg font-semibold mb-4">Team Chemistry</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
-                data={teamChemistryData}
-                cx="50%"
-                cy="50%"
-                outerRadius={80}
-                dataKey="value"
-                label={({name, value}) => `${name}: ${value}%`}
-              >
-                {teamChemistryData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* Recent Activity */}
-      <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">Real-time Updates</h3>
-          <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-xs font-medium ${
-            wsStatus === 'connected' 
-              ? 'bg-green-100 text-green-800' 
-              : 'bg-red-100 text-red-800'
-          }`}>
-            <div className={`w-2 h-2 rounded-full ${
-              wsStatus === 'connected' ? 'bg-green-500' : 'bg-red-500'
-            }`}></div>
-            {wsStatus}
+        ) : (
+          <div className="h-64 flex items-center justify-center text-gray-500">
+            No data available. Submit your first workout!
           </div>
-        </div>
-        <div className="space-y-2 max-h-40 overflow-y-auto">
-          {wsMessages.length === 0 ? (
-            <p className="text-gray-500 text-sm">No real-time updates yet...</p>
-          ) : (
-            wsMessages.map((msg, index) => (
-              <div key={index} className="text-sm p-2 bg-gray-50 rounded">
-                <span className="font-medium text-blue-600">{msg.type}</span>: {JSON.stringify(msg.message || msg.data || 'Connected', null, 0)}
-              </div>
-            ))
-          )}
-        </div>
+        )}
       </div>
-    </div>
-  );
 
-  const PlayersContent = () => (
-    <div className="space-y-6">
-      {/* Search */}
-      <div className="relative">
-        <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-        <input
-          type="text"
-          placeholder="Search players..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+      {/* Quick Actions */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <ActionButton
+          title="Submit Session"
+          description="Log your latest workout"
+          icon={Activity}
+          color="blue"
+          onClick={submitQuickSession}
+        />
+        <ActionButton
+          title="Check Performance"
+          description="View detailed analytics"
+          icon={TrendingUp}
+          color="green"
+          onClick={() => setCurrentPage('performance')}
+        />
+        <ActionButton
+          title="Voice Coach"
+          description="Get AI coaching advice"
+          icon={Mic}
+          color="purple"
+          onClick={() => setCurrentPage('voice')}
         />
       </div>
 
-      {/* Players Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredPlayers.map((player) => (
-          <div
-            key={player.id}
-            className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 hover:shadow-lg transition-all cursor-pointer"
-            onClick={() => setSelectedPlayer(player)}
-          >
-            <div className="flex items-center space-x-4">
-              <div className="w-16 h-16 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-lg">
-                {player.name.split(' ').map(n => n[0]).join('')}
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-gray-900">{player.name}</h3>
-                <p className="text-sm text-gray-600">{player.team}</p>
-                <p className="text-xs text-gray-500 capitalize">{player.position}</p>
-              </div>
-            </div>
-            
-            <div className="mt-4 grid grid-cols-2 gap-4">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-blue-600">{player.goals}</div>
-                <div className="text-xs text-gray-500">Goals</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-green-600">{player.assists}</div>
-                <div className="text-xs text-gray-500">Assists</div>
-              </div>
-            </div>
-            
-            <div className="mt-4">
-              <div className="flex justify-between text-sm mb-1">
-                <span>Pass Accuracy</span>
-                <span>{player.pass_accuracy}%</span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div 
-                  className="bg-blue-600 h-2 rounded-full"
-                  style={{ width: `${player.pass_accuracy}%` }}
-                ></div>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Player Modal */}
-      {selectedPlayer && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl p-6 max-w-md w-full">
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <h2 className="text-xl font-bold">{selectedPlayer.name}</h2>
-                <p className="text-gray-600">{selectedPlayer.team}</p>
-              </div>
-              <button
-                onClick={() => setSelectedPlayer(null)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                ✕
-              </button>
-            </div>
-            
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-blue-50 p-3 rounded-lg">
-                  <div className="text-2xl font-bold text-blue-600">{selectedPlayer.goals}</div>
-                  <div className="text-sm text-gray-600">Goals</div>
-                </div>
-                <div className="bg-green-50 p-3 rounded-lg">
-                  <div className="text-2xl font-bold text-green-600">{selectedPlayer.assists}</div>
-                  <div className="text-sm text-gray-600">Assists</div>
-                </div>
-                <div className="bg-purple-50 p-3 rounded-lg">
-                  <div className="text-2xl font-bold text-purple-600">{selectedPlayer.pass_accuracy}%</div>
-                  <div className="text-sm text-gray-600">Pass Accuracy</div>
-                </div>
-                <div className="bg-orange-50 p-3 rounded-lg">
-                  <div className="text-2xl font-bold text-orange-600">{selectedPlayer.minutes_played}</div>
-                  <div className="text-sm text-gray-600">Minutes</div>
-                </div>
-              </div>
-              
-              <div className="bg-gray-50 p-3 rounded-lg">
-                <div className="text-sm text-gray-600">Position</div>
-                <div className="font-semibold capitalize">{selectedPlayer.position}</div>
-              </div>
-              
-              <div className="bg-gray-50 p-3 rounded-lg">
-                <div className="text-sm text-gray-600">Age</div>
-                <div className="font-semibold">{selectedPlayer.age} years</div>
-              </div>
-            </div>
+      {/* Recent Insights */}
+      {insights.length > 0 && (
+        <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
+          <h3 className="text-xl font-bold text-gray-800 mb-4">Latest Insights</h3>
+          <div className="space-y-3">
+            {insights.slice(0, 3).map((insight, index) => (
+              <InsightCard key={index} insight={insight} />
+            ))}
           </div>
         </div>
       )}
     </div>
   );
+};
 
-  const PredictionsContent = () => (
-    <div className="space-y-6">
-      {/* Prediction Form */}
-      <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-        <h3 className="text-lg font-semibold mb-4">Make AI Prediction</h3>
-        <form onSubmit={handlePrediction} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Player</label>
-              <select
-                value={predictionForm.player_id}
-                onChange={(e) => setPredictionForm({...predictionForm, player_id: e.target.value})}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                required
-              >
-                <option value="">Select a player</option>
-                {players.map((player) => (
-                  <option key={player.id} value={player.id}>
-                    {player.name} - {player.team}
-                  </option>
-                ))}
-              </select>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Goals</label>
-              <input
-                type="number"
-                value={predictionForm.goals}
-                onChange={(e) => setPredictionForm({...predictionForm, goals: parseInt(e.target.value) || 0})}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                min="0"
-                required
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Assists</label>
-              <input
-                type="number"
-                value={predictionForm.assists}
-                onChange={(e) => setPredictionForm({...predictionForm, assists: parseInt(e.target.value) || 0})}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                min="0"
-                required
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Pass Accuracy (%)</label>
-              <input
-                type="number"
-                value={predictionForm.pass_accuracy}
-                onChange={(e) => setPredictionForm({...predictionForm, pass_accuracy: parseFloat(e.target.value) || 0})}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                min="0"
-                max="100"
-                step="0.1"
-                required
-              />
-            </div>
-            
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Minutes Played</label>
-              <input
-                type="number"
-                value={predictionForm.minutes_played}
-                onChange={(e) => setPredictionForm({...predictionForm, minutes_played: parseInt(e.target.value) || 0})}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                min="0"
-                required
-              />
-            </div>
-          </div>
-          
+// Voice Coaching Component
+const VoiceCoaching = () => {
+  const { user, apiCall, websocket } = useContext(AppContext);
+  const [isRecording, setIsRecording] = useState(false);
+  const [transcript, setTranscript] = useState('');
+  const [responses, setResponses] = useState([]);
+  const [processing, setProcessing] = useState(false);
+
+  const startRecording = () => {
+    setIsRecording(true);
+    // Simulate recording - in production, use Web Speech API
+    setTimeout(() => {
+      const mockTranscripts = [
+        "Show my performance metrics",
+        "What should I do for today's workout",
+        "How is my recovery looking",
+        "Am I at risk of injury",
+        "Tell me about my progress this week"
+      ];
+      const randomTranscript = mockTranscripts[Math.floor(Math.random() * mockTranscripts.length)];
+      setTranscript(randomTranscript);
+      setIsRecording(false);
+      processVoiceCommand(randomTranscript);
+    }, 3000);
+  };
+
+  const processVoiceCommand = async (text) => {
+    setProcessing(true);
+    try {
+      const response = await apiCall(`/voice?user_id=${user.id}&text=${encodeURIComponent(text)}`, {
+        method: 'POST'
+      });
+      
+      setResponses(prev => [...prev, {
+        user: text,
+        ai: response.response_text,
+        timestamp: new Date().toLocaleTimeString()
+      }]);
+      setTranscript('');
+    } catch (error) {
+      console.error('Voice processing failed:', error);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const sendTextCommand = () => {
+    if (transcript.trim()) {
+      processVoiceCommand(transcript);
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto p-6">
+      <div className="bg-white rounded-2xl p-8 shadow-lg border border-gray-100 min-h-96">
+        <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Voice Coaching Session</h2>
+        
+        {/* Microphone Button */}
+        <div className="flex justify-center mb-8">
           <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+            onClick={startRecording}
+            disabled={isRecording || processing}
+            className={`w-24 h-24 rounded-full flex items-center justify-center text-white text-3xl transition-all duration-300 transform ${
+              isRecording 
+                ? 'bg-red-500 scale-110 animate-pulse' 
+                : processing
+                ? 'bg-yellow-500 animate-spin'
+                : 'bg-blue-500 hover:bg-blue-600 hover:scale-105'
+            } shadow-lg`}
           >
-            {loading ? (
-              <>
-                <RefreshIcon className="animate-spin" />
-                <span>Generating Prediction...</span>
-              </>
+            {processing ? (
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+            ) : isRecording ? (
+              <MicOff />
             ) : (
-              <>
-                <BoltIcon />
-                <span>Generate AI Prediction</span>
-              </>
+              <Mic />
             )}
           </button>
-        </form>
-      </div>
+        </div>
+        
+        <div className="text-center mb-6">
+          {isRecording && <p className="text-red-500 font-medium">Listening...</p>}
+          {processing && <p className="text-yellow-500 font-medium">Processing your request...</p>}
+          {!isRecording && !processing && <p className="text-gray-600">Click the microphone to start</p>}
+        </div>
 
-      {/* Predictions List */}
-      <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-        <h3 className="text-lg font-semibold mb-4">Recent Predictions</h3>
-        {predictions.length === 0 ? (
-          <p className="text-gray-500">No predictions yet. Make your first prediction above!</p>
-        ) : (
-          <div className="space-y-4">
-            {predictions.map((prediction, index) => (
-              <div key={prediction.prediction_id || index} className="border border-gray-200 rounded-lg p-4">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center space-x-3">
-                    <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-white ${
-                      prediction.performance_score >= 8 ? 'bg-green-500' :
-                      prediction.performance_score >= 6 ? 'bg-yellow-500' : 'bg-red-500'
-                    }`}>
-                      {prediction.performance_score}
-                    </div>
-                    <div>
-                      <div className="font-semibold">Performance Score: {prediction.performance_score}/10</div>
-                      <div className="text-sm text-gray-600">Confidence: {(prediction.confidence * 100).toFixed(1)}%</div>
-                      <div className="text-sm text-gray-500">Model: {prediction.model_used}</div>
-                    </div>
-                  </div>
-                  <div className="text-xs text-gray-400">
-                    ID: {prediction.prediction_id}
-                  </div>
+        {/* Text Input Alternative */}
+        <div className="flex space-x-2 mb-6">
+          <input
+            type="text"
+            value={transcript}
+            onChange={(e) => setTranscript(e.target.value)}
+            placeholder="Or type your question here..."
+            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            onKeyPress={(e) => e.key === 'Enter' && sendTextCommand()}
+          />
+          <button
+            onClick={sendTextCommand}
+            disabled={!transcript.trim() || processing}
+            className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Send size={18} />
+          </button>
+        </div>
+
+        {/* Conversation History */}
+        <div className="space-y-4 max-h-64 overflow-y-auto">
+          {responses.map((response, index) => (
+            <div key={index} className="space-y-2">
+              {/* User Message */}
+              <div className="flex justify-end">
+                <div className="bg-blue-500 text-white px-4 py-2 rounded-2xl max-w-xs">
+                  <p>{response.user}</p>
+                  <span className="text-xs opacity-75">{response.timestamp}</span>
                 </div>
-                
-                {prediction.insights && prediction.insights.length > 0 && (
-                  <div className="bg-blue-50 rounded-lg p-3">
-                    <div className="font-medium text-blue-900 mb-2">AI Insights:</div>
-                    <div className="space-y-1">
-                      {prediction.insights.map((insight, idx) => (
-                        <div key={idx} className="text-sm text-blue-800">
-                          {insight}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
-            ))}
+              
+              {/* AI Response */}
+              <div className="flex justify-start">
+                <div className="bg-gray-100 text-gray-800 px-4 py-2 rounded-2xl max-w-md">
+                  <p>{response.ai}</p>
+                  <span className="text-xs text-gray-500">{response.timestamp}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {responses.length === 0 && (
+          <div className="text-center text-gray-500 py-8">
+            <p>Start a conversation with your AI coach!</p>
+            <p className="text-sm mt-2">Try asking about your performance, workout recommendations, or recovery status.</p>
           </div>
         )}
       </div>
     </div>
   );
+};
 
-  const TeamsContent = () => (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {teams.map((team) => (
-          <div key={team.id} className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 hover:shadow-lg transition-shadow">
-            <div className="flex items-center space-x-4 mb-4">
-              <div className="w-16 h-16 bg-gradient-to-r from-green-400 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-lg">
-                {team.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">{team.name}</h3>
-                <p className="text-sm text-gray-600">{team.league}</p>
+// Training Plan Component
+const TrainingPlan = () => {
+  const { user, trainingPlan, setTrainingPlan, apiCall } = useContext(AppContext);
+  const [selectedWeek, setSelectedWeek] = useState(1);
+
+  useEffect(() => {
+    loadTrainingPlan();
+  }, []);
+
+  const loadTrainingPlan = async () => {
+    try {
+      const plan = await apiCall(`/training-plans/${user.id}`);
+      setTrainingPlan(plan);
+    } catch (error) {
+      console.error('Failed to load training plan:', error);
+    }
+  };
+
+  if (!trainingPlan) {
+    return (
+      <div className="max-w-4xl mx-auto p-6">
+        <div className="bg-white rounded-2xl p-8 shadow-lg border border-gray-100 text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p>Loading your personalized training plan...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const currentWeekPlan = trainingPlan.exercises_per_week[`week_${selectedWeek}`] || [];
+
+  return (
+    <div className="max-w-6xl mx-auto p-6 space-y-6">
+      {/* Plan Header */}
+      <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-2xl p-6 border border-green-100">
+        <h2 className="text-2xl font-bold text-gray-800 mb-2">{trainingPlan.plan_name}</h2>
+        <p className="text-gray-600 mb-4">Goal: {trainingPlan.target_goal}</p>
+        <div className="flex items-center space-x-4">
+          <span className="text-sm bg-green-100 text-green-800 px-3 py-1 rounded-full">
+            Week {trainingPlan.current_week} of {trainingPlan.duration_weeks}
+          </span>
+          <span className="text-sm bg-blue-100 text-blue-800 px-3 py-1 rounded-full">
+            {trainingPlan.weekly_sessions} sessions/week
+          </span>
+        </div>
+      </div>
+
+      {/* Week Selector */}
+      <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
+        <h3 className="text-lg font-bold text-gray-800 mb-4">Select Week</h3>
+        <div className="flex flex-wrap gap-2">
+          {Array.from({ length: trainingPlan.duration_weeks }, (_, i) => i + 1).map(week => (
+            <button
+              key={week}
+              onClick={() => setSelectedWeek(week)}
+              className={`px-4 py-2 rounded-lg transition-all duration-200 ${
+                selectedWeek === week
+                  ? 'bg-blue-500 text-white shadow-lg'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Week {week}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Weekly Plan */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {currentWeekPlan.map((day, index) => (
+          <WorkoutCard key={index} workout={day} />
+        ))}
+      </div>
+
+      {currentWeekPlan.length === 0 && (
+        <div className="bg-white rounded-2xl p-8 shadow-lg border border-gray-100 text-center">
+          <Calendar size={48} className="mx-auto text-gray-400 mb-4" />
+          <h3 className="text-lg font-bold text-gray-800 mb-2">No workouts scheduled</h3>
+          <p className="text-gray-600">This week appears to be a rest week or the plan needs updating.</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Performance Check Component
+const PerformanceCheck = () => {
+  const { user, apiCall, setCurrentPage } = useContext(AppContext);
+  const [formData, setFormData] = useState({
+    endurance: 5,
+    speed: 5,
+    recovery_hours: 8,
+    stress_level: 3,
+    energy_level: 7
+  });
+  const [results, setResults] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleSliderChange = (field, value) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const submitAssessment = async () => {
+    setLoading(true);
+    try {
+      // Submit a mock workout session with the assessment data
+      const sessionData = {
+        user_id: user.id,
+        sport_type: 'assessment',
+        duration_minutes: 30,
+        intensity: Math.round((formData.endurance + formData.speed + formData.energy_level) / 3),
+        exercises: [],
+        biometrics: {
+          sleep_hours: formData.recovery_hours,
+          stress_level: formData.stress_level,
+          rpe: 10 - formData.energy_level
+        }
+      };
+
+      await apiCall('/training', {
+        method: 'POST',
+        body: JSON.stringify(sessionData)
+      });
+
+      const performance = await apiCall(`/performance?user_id=${user.id}`);
+      setResults(performance.current_metrics);
+    } catch (error) {
+      console.error('Assessment submission failed:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto p-6 space-y-6">
+      <div className="bg-white rounded-2xl p-8 shadow-lg border border-gray-100">
+        <h2 className="text-2xl font-bold text-gray-800 mb-6">Performance Assessment</h2>
+        
+        {!results ? (
+          <div className="space-y-6">
+            {/* Assessment Form */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <SliderInput
+                label="Endurance Level"
+                value={formData.endurance}
+                onChange={(value) => handleSliderChange('endurance', value)}
+                min={1}
+                max={10}
+                color="blue"
+              />
+              <SliderInput
+                label="Speed Level"
+                value={formData.speed}
+                onChange={(value) => handleSliderChange('speed', value)}
+                min={1}
+                max={10}
+                color="green"
+              />
+              <SliderInput
+                label="Recovery Hours"
+                value={formData.recovery_hours}
+                onChange={(value) => handleSliderChange('recovery_hours', value)}
+                min={4}
+                max={12}
+                color="purple"
+              />
+              <SliderInput
+                label="Stress Level"
+                value={formData.stress_level}
+                onChange={(value) => handleSliderChange('stress_level', value)}
+                min={1}
+                max={10}
+                color="red"
+              />
+              <div className="md:col-span-2">
+                <SliderInput
+                  label="Energy Level"
+                  value={formData.energy_level}
+                  onChange={(value) => handleSliderChange('energy_level', value)}
+                  min={1}
+                  max={10}
+                  color="yellow"
+                />
               </div>
             </div>
-            
-            <div className="space-y-3">
-              <div className="flex justify-between">
-                <span className="text-sm text-gray-600">Players</span>
-                <span className="font-semibold">{team.players?.length || 0}</span>
-              </div>
-              
-              <div className="flex justify-between">
-                <span className="text-sm text-gray-600">Chemistry Score</span>
-                <span className={`font-semibold ${
-                  team.chemistry_score >= 0.8 ? 'text-green-600' :
-                  team.chemistry_score >= 0.6 ? 'text-yellow-600' : 'text-red-600'
-                }`}>
-                  {(team.chemistry_score * 100).toFixed(1)}%
+
+            <button
+              onClick={submitAssessment}
+              disabled={loading}
+              className="w-full bg-gradient-to-r from-blue-500 to-purple-500 text-white py-3 px-6 rounded-lg font-medium hover:from-blue-600 hover:to-purple-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+            >
+              {loading ? 'Analyzing...' : 'Get Performance Analysis'}
+            </button>
+          </div>
+        ) : (
+          <PerformanceResults results={results} onReset={() => setResults(null)} />
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Predictions & Insights Component
+const PredictionsInsights = () => {
+  const { user, predictions, setPredictions, insights, setInsights, apiCall } = useContext(AppContext);
+
+  useEffect(() => {
+    loadPredictions();
+    loadInsights();
+  }, []);
+
+  const loadPredictions = async () => {
+    try {
+      const data = await apiCall(`/predictions?user_id=${user.id}`);
+      setPredictions(data);
+    } catch (error) {
+      console.error('Failed to load predictions:', error);
+    }
+  };
+
+  const loadInsights = async () => {
+    try {
+      const data = await apiCall(`/insights/${user.id}`);
+      setInsights(data.insights);
+    } catch (error) {
+      console.error('Failed to load insights:', error);
+    }
+  };
+
+  if (!predictions) {
+    return (
+      <div className="max-w-6xl mx-auto p-6">
+        <div className="bg-white rounded-2xl p-8 shadow-lg border border-gray-100 text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p>Loading predictions and insights...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const riskColor = predictions.injury_prediction.risk_level === 'high' ? 'red' : 
+                   predictions.injury_prediction.risk_level === 'medium' ? 'yellow' : 'green';
+
+  return (
+    <div className="max-w-6xl mx-auto p-6 space-y-6">
+      {/* Injury Risk Assessment */}
+      <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
+        <h2 className="text-2xl font-bold text-gray-800 mb-6">Injury Risk Assessment</h2>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="text-center">
+            <div className={`w-24 h-24 mx-auto rounded-full flex items-center justify-center text-white text-2xl font-bold ${
+              riskColor === 'red' ? 'bg-red-500' : 
+              riskColor === 'yellow' ? 'bg-yellow-500' : 'bg-green-500'
+            }`}>
+              {Math.round(predictions.injury_prediction.risk_score * 100)}%
+            </div>
+            <h3 className="text-lg font-bold mt-2 capitalize">{predictions.injury_prediction.risk_level} Risk</h3>
+          </div>
+          
+          <div>
+            <h4 className="font-bold text-gray-800 mb-2">Risk Factors:</h4>
+            <ul className="space-y-1">
+              {predictions.injury_prediction.risk_factors.map((factor, index) => (
+                <li key={index} className="text-sm text-gray-600 flex items-center">
+                  <AlertTriangle size={16} className="mr-2 text-yellow-500" />
+                  {factor}
+                </li>
+              ))}
+            </ul>
+          </div>
+          
+          <div>
+            <h4 className="font-bold text-gray-800 mb-2">Recommendations:</h4>
+            <ul className="space-y-1">
+              {predictions.injury_prediction.recommendations.slice(0, 3).map((rec, index) => (
+                <li key={index} className="text-sm text-gray-600 flex items-center">
+                  <CheckCircle size={16} className="mr-2 text-green-500" />
+                  {rec}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {/* Fatigue Forecast */}
+      <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
+        <h3 className="text-xl font-bold text-gray-800 mb-4">7-Day Fatigue Forecast</h3>
+        <ResponsiveContainer width="100%" height={250}>
+          <BarChart data={predictions.fatigue_forecast}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="date" tickFormatter={(date) => new Date(date).toLocaleDateString('en', { weekday: 'short' })} />
+            <YAxis />
+            <Tooltip 
+              labelFormatter={(date) => new Date(date).toLocaleDateString()}
+              formatter={(value, name) => [
+                `${(value * 100).toFixed(0)}%`,
+                name === 'predicted_fatigue' ? 'Fatigue Level' : name
+              ]}
+            />
+            <Bar dataKey="predicted_fatigue" fill="#3B82F6" />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Smart Insights */}
+      <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
+        <h3 className="text-xl font-bold text-gray-800 mb-4">Smart Insights</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {insights.map((insight, index) => (
+            <InsightCard key={index} insight={insight} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Helper Components
+const MetricCard = ({ title, value, color, trend }) => {
+  const colorClasses = {
+    blue: 'from-blue-500 to-blue-600',
+    red: 'from-red-500 to-red-600',
+    green: 'from-green-500 to-green-600',
+    purple: 'from-purple-500 to-purple-600'
+  };
+
+  const trendIcon = trend === 'improving' ? '↗' : trend === 'declining' ? '↘' : '→';
+  const trendColor = trend === 'improving' ? 'text-green-500' : trend === 'declining' ? 'text-red-500' : 'text-gray-500';
+
+  return (
+    <div className="bg-white rounded-xl p-4 shadow-lg border border-gray-100">
+      <div className={`w-12 h-12 rounded-lg bg-gradient-to-r ${colorClasses[color]} flex items-center justify-center mb-3`}>
+        <Activity size={24} className="text-white" />
+      </div>
+      <h3 className="text-sm font-medium text-gray-600">{title}</h3>
+      <div className="flex items-center justify-between">
+        <p className="text-2xl font-bold text-gray-800">{value}</p>
+        {trend && (
+          <span className={`text-sm font-medium ${trendColor}`}>
+            {trendIcon}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const ActionButton = ({ title, description, icon: Icon, color, onClick }) => {
+  const colorClasses = {
+    blue: 'from-blue-50 to-blue-100 hover:from-blue-100 hover:to-blue-150 border-blue-200',
+    green: 'from-green-50 to-green-100 hover:from-green-100 hover:to-green-150 border-green-200',
+    purple: 'from-purple-50 to-purple-100 hover:from-purple-100 hover:to-purple-150 border-purple-200'
+  };
+
+  const iconColors = {
+    blue: 'text-blue-600',
+    green: 'text-green-600',
+    purple: 'text-purple-600'
+  };
+
+  return (
+    <button
+      onClick={onClick}
+      className={`bg-gradient-to-r ${colorClasses[color]} border rounded-xl p-6 text-left hover:shadow-lg transition-all duration-200 transform hover:scale-105`}
+    >
+      <Icon size={32} className={`${iconColors[color]} mb-4`} />
+      <h3 className="text-lg font-bold text-gray-800 mb-2">{title}</h3>
+      <p className="text-gray-600 text-sm">{description}</p>
+    </button>
+  );
+};
+
+const InsightCard = ({ insight }) => {
+  const priorityColors = {
+    high: 'border-red-200 bg-red-50',
+    medium: 'border-yellow-200 bg-yellow-50',
+    low: 'border-green-200 bg-green-50'
+  };
+
+  const priorityIcons = {
+    high: <AlertTriangle size={16} className="text-red-500" />,
+    medium: <Target size={16} className="text-yellow-500" />,
+    low: <CheckCircle size={16} className="text-green-500" />
+  };
+
+  return (
+    <div className={`border rounded-lg p-4 ${priorityColors[insight.priority]}`}>
+      <div className="flex items-center space-x-2 mb-2">
+        {priorityIcons[insight.priority]}
+        <h4 className="font-bold text-gray-800">{insight.title}</h4>
+      </div>
+      <p className="text-gray-700 text-sm mb-3">{insight.message}</p>
+      {insight.action_items && insight.action_items.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-gray-600 uppercase">Action Items:</p>
+          {insight.action_items.slice(0, 2).map((item, index) => (
+            <p key={index} className="text-xs text-gray-600">• {item}</p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const WorkoutCard = ({ workout }) => {
+  const typeColors = {
+    strength_training: 'from-red-500 to-red-600',
+    cardio: 'from-blue-500 to-blue-600',
+    flexibility: 'from-green-500 to-green-600'
+  };
+
+  return (
+    <div className="bg-white rounded-xl p-4 shadow-lg border border-gray-100">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-bold text-gray-800">Day {workout.day}</h3>
+        <div className={`px-3 py-1 rounded-full text-white text-xs font-medium bg-gradient-to-r ${typeColors[workout.type] || 'from-gray-500 to-gray-600'}`}>
+          {workout.type.replace('_', ' ')}
+        </div>
+      </div>
+      
+      <div className="space-y-2">
+        {workout.exercises.map((exercise, index) => (
+          <div key={index} className="bg-gray-50 rounded-lg p-3">
+            <h4 className="font-medium text-gray-800">{exercise.name}</h4>
+            <div className="flex items-center space-x-3 text-sm text-gray-600 mt-1">
+              {exercise.sets && <span>{exercise.sets} sets</span>}
+              {exercise.reps && <span>{exercise.reps} reps</span>}
+              {exercise.duration && <span>{exercise.duration} min</span>}
+              {exercise.intensity && (
+                <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">
+                  Intensity: {exercise.intensity}/10
                 </span>
-              </div>
-              
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div 
-                  className="bg-blue-600 h-2 rounded-full"
-                  style={{ width: `${team.chemistry_score * 100}%` }}
-                ></div>
-              </div>
+              )}
             </div>
-            
-            {team.players && team.players.length > 0 && (
-              <div className="mt-4 pt-4 border-t border-gray-100">
-                <div className="text-xs text-gray-500 mb-2">Top Players:</div>
-                <div className="space-y-1">
-                  {team.players.slice(0, 3).map((player, idx) => (
-                    <div key={idx} className="text-sm text-gray-700">
-                      {player.name} - {player.position}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         ))}
       </div>
     </div>
   );
+};
 
-  const tabs = [
-    { id: 'dashboard', label: 'Dashboard', icon: ChartIcon },
-    { id: 'players', label: 'Players', icon: UserIcon },
-    { id: 'predictions', label: 'AI Predictions', icon: BoltIcon },
-    { id: 'teams', label: 'Teams', icon: TrophyIcon }
-  ];
+const SliderInput = ({ label, value, onChange, min, max, color }) => {
+  const colorClasses = {
+    blue: 'accent-blue-500',
+    green: 'accent-green-500',
+    purple: 'accent-purple-500',
+    red: 'accent-red-500',
+    yellow: 'accent-yellow-500'
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
-                <TrophyIcon className="text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Sports Analytics</h1>
-                <p className="text-sm text-gray-600">AI-powered performance insights</p>
-              </div>
-            </div>
-            
-            <button
-              onClick={fetchData}
-              disabled={loading}
-              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-            >
-              <RefreshIcon className={loading ? 'animate-spin' : ''} />
-              <span>Refresh</span>
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Navigation */}
-      <nav className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex space-x-8">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                  activeTab === tab.id
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <tab.icon />
-                <span>{tab.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      </nav>
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {loading && activeTab === 'dashboard' && (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-          </div>
-        )}
-        
-        {!loading && (
-          <>
-            {activeTab === 'dashboard' && <DashboardContent />}
-            {activeTab === 'players' && <PlayersContent />}
-            {activeTab === 'predictions' && <PredictionsContent />}
-            {activeTab === 'teams' && <TeamsContent />}
-          </>
-        )}
-      </main>
-
-      {/* Footer */}
-      <footer className="bg-white border-t border-gray-200 mt-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-gray-600">
-              © 2024 Sports Analytics Dashboard. Powered by AI.
-            </div>
-            <div className="flex items-center space-x-4 text-sm text-gray-500">
-              <span>API Status: Connected</span>
-              <span className={`flex items-center space-x-1 ${
-                wsStatus === 'connected' ? 'text-green-600' : 'text-red-600'
-              }`}>
-                <div className={`w-2 h-2 rounded-full ${
-                  wsStatus === 'connected' ? 'bg-green-500' : 'bg-red-500'
-                }`}></div>
-                <span>WebSocket: {wsStatus}</span>
-              </span>
-            </div>
-          </div>
-        </div>
-      </footer>
+    <div className="space-y-2">
+      <div className="flex justify-between items-center">
+        <label className="font-medium text-gray-800">{label}</label>
+        <span className="text-lg font-bold text-gray-600">{value}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        value={value}
+        onChange={(e) => onChange(parseInt(e.target.value))}
+        className={`w-full h-2 rounded-lg appearance-none cursor-pointer bg-gray-200 ${colorClasses[color]}`}
+      />
+      <div className="flex justify-between text-xs text-gray-500">
+        <span>{min}</span>
+        <span>{max}</span>
+      </div>
     </div>
   );
 };
 
-export default SportsAnalyticsDashboard;
+const PerformanceResults = ({ results, onReset }) => {
+  const getScoreColor = (score) => {
+    if (score >= 80) return 'text-green-600';
+    if (score >= 60) return 'text-yellow-600';
+    return 'text-red-600';
+  };
+
+  const getScoreBackground = (score) => {
+    if (score >= 80) return 'bg-green-100';
+    if (score >= 60) return 'bg-yellow-100';
+    return 'bg-red-100';
+  };
+
+  const radarData = [
+    { subject: 'Strength', value: results.strength_score },
+    { subject: 'Endurance', value: results.endurance_score },
+    { subject: 'Speed', value: results.speed_score },
+    { subject: 'Recovery', value: results.recovery_score },
+    { subject: 'Consistency', value: results.consistency_score }
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div className="text-center">
+        <div className={`inline-flex items-center justify-center w-24 h-24 rounded-full text-3xl font-bold ${getScoreBackground(results.overall_score)} ${getScoreColor(results.overall_score)}`}>
+          {results.overall_score}%
+        </div>
+        <h3 className="text-2xl font-bold text-gray-800 mt-4">Overall Performance Score</h3>
+        <p className="text-gray-600">You're in the {results.percentile_rank}th percentile</p>
+      </div>
+
+      {/* Performance Breakdown */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        {[
+          { label: 'Strength', value: results.strength_score },
+          { label: 'Endurance', value: results.endurance_score },
+          { label: 'Speed', value: results.speed_score },
+          { label: 'Recovery', value: results.recovery_score },
+          { label: 'Consistency', value: results.consistency_score }
+        ].map((metric, index) => (
+          <div key={index} className="text-center">
+            <div className={`text-2xl font-bold ${getScoreColor(metric.value)}`}>
+              {metric.value}%
+            </div>
+            <p className="text-sm text-gray-600">{metric.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Radar Chart */}
+      <div className="h-64">
+        <ResponsiveContainer width="100%" height="100%">
+          <RadarChart data={radarData}>
+            <PolarGrid />
+            <PolarAngleAxis dataKey="subject" />
+            <PolarRadiusAxis angle={90} domain={[0, 100]} />
+            <Radar dataKey="value" stroke="#3B82F6" fill="#3B82F6" fillOpacity={0.3} strokeWidth={2} />
+          </RadarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Trend Information */}
+      <div className={`p-4 rounded-lg ${
+        results.trend_direction === 'improving' ? 'bg-green-100 text-green-800' :
+        results.trend_direction === 'declining' ? 'bg-red-100 text-red-800' :
+        'bg-gray-100 text-gray-800'
+      }`}>
+        <h4 className="font-bold mb-2">Performance Trend</h4>
+        <p>
+          Your performance is currently {results.trend_direction}. 
+          {results.trend_direction === 'improving' && ' Keep up the excellent work!'}
+          {results.trend_direction === 'declining' && ' Consider adjusting your training or recovery routine.'}
+          {results.trend_direction === 'stable' && ' You\'re maintaining consistent performance levels.'}
+        </p>
+      </div>
+
+      <button
+        onClick={onReset}
+        className="w-full bg-gray-500 text-white py-2 px-4 rounded-lg hover:bg-gray-600 transition-colors"
+      >
+        Take Another Assessment
+      </button>
+    </div>
+  );
+};
+
+// Main App Component
+const App = () => {
+  return (
+    <AppProvider>
+      <div className="min-h-screen bg-gray-50">
+        <Navigation />
+        <main className="py-6">
+          <AppContent />
+        </main>
+      </div>
+    </AppProvider>
+  );
+};
+
+const AppContent = () => {
+  const { currentPage } = useContext(AppContext);
+
+  switch (currentPage) {
+    case 'dashboard':
+      return <Dashboard />;
+    case 'voice':
+      return <VoiceCoaching />;
+    case 'training':
+      return <TrainingPlan />;
+    case 'performance':
+      return <PerformanceCheck />;
+    case 'predictions':
+      return <PredictionsInsights />;
+    default:
+      return <Dashboard />;
+  }
+};
+
+export default App;
